@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jarvis 3D 互動面板 - 老闆專用</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            font-family: 'Microsoft JhengHei', Arial, sans-serif;
+            overflow: hidden;
+            color: white;
+        }
+        
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            border: 2px solid #00ffff;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+        }
+        
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            border: 2px solid #00ffff;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+        }
+        
+        .control-btn {
+            background: linear-gradient(45deg, #00ffff, #0080ff);
+            border: none;
+            color: white;
+            padding: 10px 15px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        
+        .control-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+        }
+        
+        #status {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            border: 2px solid #00ff00;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+        }
+        
+        .jarvis-title {
+            color: #00ffff;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+            margin: 0 0 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="info">
+            <h3 class="jarvis-title">🤖 Jarvis 3D 互動面板</h3>
+            <p>老闆，歡迎使用3D視覺化溝通系統！</p>
+            <p>🖱️ 滑鼠拖拽：旋轉視角</p>
+            <p>🎯 滑鼠滾輪：縮放</p>
+            <p>⌨️ V鍵：新增車子 | A鍵：車子動畫</p>
+        </div>
+        
+        <div id="status">
+            <h4 class="jarvis-title">📊 系統狀態</h4>
+            <p id="fps">FPS: --</p>
+            <p id="objects">物件: --</p>
+            <p id="mode">模式: 展示</p>
+        </div>
+        
+        <div id="controls">
+            <h4 class="jarvis-title">🎮 控制面板</h4>
+            <button class="control-btn" onclick="openBox()">📦 打開盒子</button>
+            <button class="control-btn" onclick="closeBox()">📦 關閉盒子</button>
+            <button class="control-btn" onclick="rotateBox()">🔄 旋轉盒子</button>
+            <button class="control-btn" onclick="changeColor()">🎨 變換顏色</button>
+            <button class="control-btn" onclick="addSphere()">⚪ 新增球體</button>
+            <button class="control-btn" onclick="addCar()">🚗 新增車子</button>
+            <button class="control-btn" onclick="startCarAnimation()">🎬 車子動畫</button>
+            <button class="control-btn" onclick="resetScene()">🔄 重置場景</button>
+        </div>
+    </div>
+
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <script>
+        // 全域變數
+        let scene, camera, renderer, controls;
+        let box, boxParts = [];
+        let spheres = [];
+        let cars = [];
+        let isBoxOpen = false;
+        let animationId;
+        let frameCount = 0;
+        let lastTime = performance.now();
+        let carAnimations = [];
+        
+        // 顏色陣列
+        const colors = [0x00ffff, 0xff00ff, 0xffff00, 0xff0000, 0x00ff00, 0x0000ff];
+        let currentColorIndex = 0;
+        
+        // 初始化場景
+        function init() {
+            // 建立場景
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000011);
+            
+            // 建立相機
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(5, 5, 5);
+            camera.lookAt(0, 0, 0);
+            
+            // 建立渲染器
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.getElementById('container').appendChild(renderer.domElement);
+            
+            // 建立軌道控制器（簡化版）
+            setupControls();
+            
+            // 建立燈光
+            setupLights();
+            
+            // 建立3D盒子
+            createBox();
+            
+            // 建立地面
+            createGround();
+            
+            // 開始動畫循環
+            animate();
+            
+            // 視窗大小調整
+            window.addEventListener('resize', onWindowResize);
+            
+            console.log('🤖 Jarvis 3D 系統初始化完成！');
+        }
+        
+        // 設置燈光
+        function setupLights() {
+            // 環境光
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+            scene.add(ambientLight);
+            
+            // 方向光
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(10, 10, 5);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 1024;
+            directionalLight.shadow.mapSize.height = 1024;
+            scene.add(directionalLight);
+            
+            // 點光源
+            const pointLight = new THREE.PointLight(0x00ffff, 0.5, 100);
+            pointLight.position.set(0, 5, 0);
+            scene.add(pointLight);
+        }
+        
+        // 建立3D盒子
+        function createBox() {
+            const boxGeometry = new THREE.BoxGeometry(2, 2, 2);
+            const boxMaterial = new THREE.MeshPhongMaterial({ 
+                color: colors[currentColorIndex],
+                transparent: true,
+                opacity: 0.8
+            });
+            
+            box = new THREE.Mesh(boxGeometry, boxMaterial);
+            box.position.set(0, 1, 0);
+            box.castShadow = true;
+            box.receiveShadow = true;
+            scene.add(box);
+            
+            // 建立盒子的各個面（用於開合動畫）
+            createBoxParts();
+        }
+        
+        // 建立盒子各部分
+        function createBoxParts() {
+            // 清除舊的部分
+            boxParts.forEach(part => scene.remove(part));
+            boxParts = [];
+            
+            // 盒子的6個面
+            const faceGeometry = new THREE.PlaneGeometry(2, 2);
+            const faceMaterial = new THREE.MeshPhongMaterial({ 
+                color: colors[currentColorIndex],
+                transparent: true,
+                opacity: 0.7,
+                side: THREE.DoubleSide
+            });
+            
+            // 前面
+            const front = new THREE.Mesh(faceGeometry, faceMaterial.clone());
+            front.position.set(0, 1, 1);
+            front.userData = { type: 'front', originalPosition: { x: 0, y: 1, z: 1 } };
+            
+            // 後面
+            const back = new THREE.Mesh(faceGeometry, faceMaterial.clone());
+            back.position.set(0, 1, -1);
+            back.userData = { type: 'back', originalPosition: { x: 0, y: 1, z: -1 } };
+            
+            // 左面
+            const left = new THREE.Mesh(faceGeometry, faceMaterial.clone());
+            left.position.set(-1, 1, 0);
+            left.rotation.y = Math.PI / 2;
+            left.userData = { type: 'left', originalPosition: { x: -1, y: 1, z: 0 } };
+            
+            // 右面
+            const right = new THREE.Mesh(faceGeometry, faceMaterial.clone());
+            right.position.set(1, 1, 0);
+            right.rotation.y = Math.PI / 2;
+            right.userData = { type: 'right', originalPosition: { x: 1, y: 1, z: 0 } };
+            
+            // 上面
+            const top = new THREE.Mesh(faceGeometry, faceMaterial.clone());
+            top.position.set(0, 2, 0);
+            top.rotation.x = Math.PI / 2;
+            top.userData = { type: 'top', originalPosition: { x: 0, y: 2, z: 0 } };
+            
+            // 下面
+            const bottom = new THREE.Mesh(faceGeometry, faceMaterial.clone());
+            bottom.position.set(0, 0, 0);
+            bottom.rotation.x = Math.PI / 2;
+            bottom.userData = { type: 'bottom', originalPosition: { x: 0, y: 0, z: 0 } };
+            
+            boxParts = [front, back, left, right, top, bottom];
+            
+            // 隱藏原始盒子，顯示各個面
+            box.visible = false;
+            boxParts.forEach(part => {
+                part.castShadow = true;
+                part.receiveShadow = true;
+                scene.add(part);
+            });
+        }
+        
+        // 建立地面
+        function createGround() {
+            const groundGeometry = new THREE.PlaneGeometry(20, 20);
+            const groundMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0x333333,
+                transparent: true,
+                opacity: 0.5
+            });
+            
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = -1;
+            ground.receiveShadow = true;
+            scene.add(ground);
+        }
+        
+        // 簡化的控制器
+        function setupControls() {
+            let isMouseDown = false;
+            let mouseX = 0, mouseY = 0;
+            let targetRotationX = 0, targetRotationY = 0;
+            let currentRotationX = 0, currentRotationY = 0;
+            
+            renderer.domElement.addEventListener('mousedown', (event) => {
+                isMouseDown = true;
+                mouseX = event.clientX;
+                mouseY = event.clientY;
+            });
+            
+            renderer.domElement.addEventListener('mousemove', (event) => {
+                if (isMouseDown) {
+                    const deltaX = event.clientX - mouseX;
+                    const deltaY = event.clientY - mouseY;
+                    
+                    targetRotationY += deltaX * 0.01;
+                    targetRotationX += deltaY * 0.01;
+                    
+                    mouseX = event.clientX;
+                    mouseY = event.clientY;
+                }
+            });
+            
+            renderer.domElement.addEventListener('mouseup', () => {
+                isMouseDown = false;
+            });
+            
+            // 滑鼠滾輪縮放
+            renderer.domElement.addEventListener('wheel', (event) => {
+                camera.position.multiplyScalar(event.deltaY > 0 ? 1.1 : 0.9);
+                camera.position.clampLength(3, 20);
+            });
+            
+            // 更新相機位置
+            function updateCamera() {
+                currentRotationX += (targetRotationX - currentRotationX) * 0.1;
+                currentRotationY += (targetRotationY - currentRotationY) * 0.1;
+                
+                const radius = camera.position.length();
+                camera.position.x = radius * Math.sin(currentRotationY) * Math.cos(currentRotationX);
+                camera.position.y = radius * Math.sin(currentRotationX);
+                camera.position.z = radius * Math.cos(currentRotationY) * Math.cos(currentRotationX);
+                camera.lookAt(0, 0, 0);
+                
+                requestAnimationFrame(updateCamera);
+            }
+            updateCamera();
+        }
+        
+        // 動畫循環
+        function animate() {
+            animationId = requestAnimationFrame(animate);
+            
+            // 更新FPS
+            frameCount++;
+            const currentTime = performance.now();
+            if (currentTime - lastTime >= 1000) {
+                document.getElementById('fps').textContent = `FPS: ${frameCount}`;
+                frameCount = 0;
+                lastTime = currentTime;
+            }
+            
+            // 更新物件數量
+            document.getElementById('objects').textContent = `物件: ${scene.children.length}`;
+            
+            // 更新車子動畫
+            updateCarAnimations();
+            
+            // 渲染場景
+            renderer.render(scene, camera);
+        }
+        
+        // 控制函數
+        function openBox() {
+            if (isBoxOpen) return;
+            
+            isBoxOpen = true;
+            document.getElementById('mode').textContent = '模式: 開啟中';
+            
+            boxParts.forEach(part => {
+                const type = part.userData.type;
+                switch(type) {
+                    case 'front':
+                        part.position.z += 2;
+                        break;
+                    case 'back':
+                        part.position.z -= 2;
+                        break;
+                    case 'left':
+                        part.position.x -= 2;
+                        break;
+                    case 'right':
+                        part.position.x += 2;
+                        break;
+                    case 'top':
+                        part.position.y += 2;
+                        break;
+                }
+            });
+            
+            setTimeout(() => {
+                document.getElementById('mode').textContent = '模式: 已開啟';
+            }, 1000);
+        }
+        
+        function closeBox() {
+            if (!isBoxOpen) return;
+            
+            isBoxOpen = false;
+            document.getElementById('mode').textContent = '模式: 關閉中';
+            
+            boxParts.forEach(part => {
+                const original = part.userData.originalPosition;
+                part.position.set(original.x, original.y, original.z);
+            });
+            
+            setTimeout(() => {
+                document.getElementById('mode').textContent = '模式: 已關閉';
+            }, 1000);
+        }
+        
+        function rotateBox() {
+            boxParts.forEach(part => {
+                part.rotation.y += Math.PI / 4;
+            });
+        }
+        
+        function changeColor() {
+            currentColorIndex = (currentColorIndex + 1) % colors.length;
+            const newColor = colors[currentColorIndex];
+            
+            boxParts.forEach(part => {
+                part.material.color.setHex(newColor);
+            });
+        }
+        
+        function addSphere() {
+            const sphereGeometry = new THREE.SphereGeometry(0.5, 16, 16);
+            const sphereMaterial = new THREE.MeshPhongMaterial({ 
+                color: Math.random() * 0xffffff,
+                transparent: true,
+                opacity: 0.8
+            });
+            
+            const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+            sphere.position.set(
+                (Math.random() - 0.5) * 10,
+                Math.random() * 5 + 1,
+                (Math.random() - 0.5) * 10
+            );
+            sphere.castShadow = true;
+            sphere.receiveShadow = true;
+            
+            scene.add(sphere);
+            spheres.push(sphere);
+        }
+        
+        // 建立3D車子模型
+        function createCar() {
+            const carGroup = new THREE.Group();
+            
+            // 車身 (主體)
+            const bodyGeometry = new THREE.BoxGeometry(3, 0.8, 1.5);
+            const bodyMaterial = new THREE.MeshPhongMaterial({ color: 0xff4444 });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            body.position.y = 0.4;
+            body.castShadow = true;
+            carGroup.add(body);
+            
+            // 車頂
+            const roofGeometry = new THREE.BoxGeometry(1.8, 0.6, 1.3);
+            const roofMaterial = new THREE.MeshPhongMaterial({ color: 0xcc3333 });
+            const roof = new THREE.Mesh(roofGeometry, roofMaterial);
+            roof.position.set(0, 1.1, 0);
+            roof.castShadow = true;
+            carGroup.add(roof);
+            
+            // 車輪
+            const wheelGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 12);
+            const wheelMaterial = new THREE.MeshPhongMaterial({ color: 0x333333 });
+            
+            // 前輪
+            const frontLeftWheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+            frontLeftWheel.position.set(-1, 0, 0.8);
+            frontLeftWheel.rotation.z = Math.PI / 2;
+            frontLeftWheel.castShadow = true;
+            carGroup.add(frontLeftWheel);
+            
+            const frontRightWheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+            frontRightWheel.position.set(-1, 0, -0.8);
+            frontRightWheel.rotation.z = Math.PI / 2;
+            frontRightWheel.castShadow = true;
+            carGroup.add(frontRightWheel);
+            
+            // 後輪
+            const rearLeftWheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+            rearLeftWheel.position.set(1, 0, 0.8);
+            rearLeftWheel.rotation.z = Math.PI / 2;
+            rearLeftWheel.castShadow = true;
+            carGroup.add(rearLeftWheel);
+            
+            const rearRightWheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+            rearRightWheel.position.set(1, 0, -0.8);
+            rearRightWheel.rotation.z = Math.PI / 2;
+            rearRightWheel.castShadow = true;
+            carGroup.add(rearRightWheel);
+            
+            // 車燈
+            const lightGeometry = new THREE.SphereGeometry(0.15, 8, 8);
+            const lightMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0xffff00,
+                emissive: 0x444400
+            });
+            
+            const leftLight = new THREE.Mesh(lightGeometry, lightMaterial);
+            leftLight.position.set(-1.6, 0.6, 0.5);
+            carGroup.add(leftLight);
+            
+            const rightLight = new THREE.Mesh(lightGeometry, lightMaterial);
+            rightLight.position.set(-1.6, 0.6, -0.5);
+            carGroup.add(rightLight);
+            
+            // 儲存車輪引用以便動畫
+            carGroup.userData.wheels = [frontLeftWheel, frontRightWheel, rearLeftWheel, rearRightWheel];
+            
+            return carGroup;
+        }
+        
+        // 新增車子到場景
+        function addCar() {
+            const car = createCar();
+            car.position.set(
+                (Math.random() - 0.5) * 8,
+                0.3,
+                (Math.random() - 0.5) * 8
+            );
+            car.rotation.y = Math.random() * Math.PI * 2;
+            
+            scene.add(car);
+            cars.push(car);
+            
+            console.log('🚗 新增了一台車子！');
+        }
+        
+        // 開始車子旋轉動畫 (5秒鐘)
+        function startCarAnimation() {
+            if (cars.length === 0) {
+                console.log('🚗 請先新增車子！');
+                return;
+            }
+            
+            // 為每台車子建立動畫
+            cars.forEach((car, index) => {
+                const animation = {
+                    car: car,
+                    startTime: performance.now(),
+                    duration: 5000, // 5秒
+                    initialRotation: car.rotation.y,
+                    active: true
+                };
+                carAnimations.push(animation);
+            });
+            
+            document.getElementById('mode').textContent = '模式: 車子動畫中';
+            console.log('🎬 開始車子5秒旋轉動畫！');
+        }
+        
+        // 更新車子動畫
+        function updateCarAnimations() {
+            const currentTime = performance.now();
+            
+            carAnimations = carAnimations.filter(animation => {
+                if (!animation.active) return false;
+                
+                const elapsed = currentTime - animation.startTime;
+                const progress = elapsed / animation.duration;
+                
+                if (progress >= 1) {
+                    // 動畫完成
+                    animation.active = false;
+                    console.log('🎬 車子動畫完成！');
+                    
+                    // 如果所有動畫都完成，更新狀態
+                    if (carAnimations.filter(a => a.active).length === 0) {
+                        document.getElementById('mode').textContent = '模式: 動畫完成';
+                    }
+                    return false;
+                }
+                
+                // 計算旋轉角度 (完整旋轉一圈)
+                const rotationAngle = animation.initialRotation + (progress * Math.PI * 2);
+                animation.car.rotation.y = rotationAngle;
+                
+                // 車輪旋轉動畫
+                if (animation.car.userData.wheels) {
+                    animation.car.userData.wheels.forEach(wheel => {
+                        wheel.rotation.x = progress * Math.PI * 8; // 車輪轉動
+                    });
+                }
+                
+                return true;
+            });
+        }
+        
+        function resetScene() {
+            // 移除所有球體
+            spheres.forEach(sphere => scene.remove(sphere));
+            spheres = [];
+            
+            // 移除所有車子
+            cars.forEach(car => scene.remove(car));
+            cars = [];
+            
+            // 清除動畫
+            carAnimations = [];
+            
+            // 重置盒子
+            closeBox();
+            currentColorIndex = 0;
+            changeColor();
+            
+            document.getElementById('mode').textContent = '模式: 已重置';
+        }
+        
+        // 視窗大小調整
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        // 鍵盤控制
+        document.addEventListener('keydown', (event) => {
+            switch(event.key.toLowerCase()) {
+                case 'o':
+                    openBox();
+                    break;
+                case 'c':
+                    closeBox();
+                    break;
+                case 'r':
+                    rotateBox();
+                    break;
+                case ' ':
+                    event.preventDefault();
+                    changeColor();
+                    break;
+                case 's':
+                    addSphere();
+                    break;
+                case 'v':
+                    addCar();
+                    break;
+                case 'a':
+                    startCarAnimation();
+                    break;
+                case 'escape':
+                    resetScene();
+                    break;
+            }
+        });
+        
+        // 啟動系統
+        init();
+        
+        console.log('🤖 Jarvis 3D 互動面板已啟動！');
+        console.log('📋 快捷鍵：O-開啟, C-關閉, R-旋轉, 空白鍵-變色, S-球體, V-車子, A-動畫, ESC-重置');
+    </script>
+</body>
+</html>
